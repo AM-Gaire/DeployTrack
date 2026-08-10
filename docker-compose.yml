@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: deploytrack-postgres
+    environment:
+      POSTGRES_DB: deploytrack
+      POSTGRES_USER: deploytrack
+      POSTGRES_PASSWORD: deploytrack
+    ports:
+      # Host port 5433, not 5432 -- this machine already has a native
+      # PostgreSQL 18 install listening on 5432. Mapping to 5433 avoids
+      # touching that install; the container still uses its normal 5432
+      # internally, so nothing inside Docker needs to know about this.
+      - "5433:5432"
+    volumes:
+      - deploytrack-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deploytrack"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  deploytrack-postgres-data:

@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: deploytrack-api
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5433}/${DB_NAME:deploytrack}
+    username: ${DB_USER:deploytrack}
+    password: ${DB_PASSWORD:deploytrack}
+
+  jpa:
+    # ddl-auto: update is convenient for Phase 2 while the schema is still
+    # moving, but it's a known anti-pattern for anything beyond local dev --
+    # it can't express column renames or drops safely. Swapping to Flyway-
+    # managed migrations is on the backlog before Phase 4 wraps up.
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+server:
+  port: 8080
+
+deploytrack:
+  jwt:
+    # Local-development key only. It is committed so the project runs out of
+    # the box, which is exactly why it must never be reused anywhere real --
+    # anyone with this value can forge a token for any user and any role.
+    # Production supplies its own via the JWT_SECRET environment variable
+    # (AWS Secrets Manager in Phase 10). Generate one with:
+    #   openssl rand -base64 32
+    secret: ${JWT_SECRET:Uaw6qGNZrDvfylhweCHyFZkQjspWnLuL9Rhs77rDiDE=}
+    # Short by design. Because a JWT cannot be revoked once issued, expiry is
+    # the only thing limiting the damage of a stolen token. Overridable via
+    # JWT_EXPIRY (e.g. 8h) so a long demo does not mean re-logging in
+    # constantly -- refresh tokens are the proper fix, deferred past MVP.
+    expiry: ${JWT_EXPIRY:15m}
