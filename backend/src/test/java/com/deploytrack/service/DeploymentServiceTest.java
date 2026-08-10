@@ -22,6 +22,7 @@ import com.deploytrack.repository.LogRepository;
 import com.deploytrack.security.CurrentUserService;
 import java.time.Instant;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -29,6 +30,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -46,8 +48,23 @@ class DeploymentServiceTest {
     @Mock
     private CurrentUserService currentUserService;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private DeploymentService deploymentService;
+
+    @BeforeEach
+    void stubLogPersistence() {
+        // A real repository returns the persisted entity with its generated
+        // id; an unstubbed mock returns null. appendLog builds an event from
+        // that return value, so the mock has to behave like the real thing.
+        when(logRepository.save(any(LogEntry.class))).thenAnswer(inv -> {
+            LogEntry entry = inv.getArgument(0);
+            entry.setId(1L);
+            return entry;
+        });
+    }
 
     private static final User DEPLOYER =
         User.builder().id(1L).username("amrit").role(Role.DEVELOPER).build();

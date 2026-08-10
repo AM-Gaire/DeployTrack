@@ -1,6 +1,7 @@
 package com.deploytrack.service;
 
 import com.deploytrack.dto.CreateDeploymentRequest;
+import com.deploytrack.dto.LogResponse;
 import com.deploytrack.entity.Deployment;
 import com.deploytrack.entity.DeploymentStatus;
 import com.deploytrack.entity.Environment;
@@ -15,6 +16,7 @@ import com.deploytrack.repository.LogRepository;
 import com.deploytrack.security.CurrentUserService;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,7 @@ public class DeploymentService {
     private final LogRepository logRepository;
     private final ProjectService projectService;
     private final CurrentUserService currentUserService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public Page<Deployment> list(Long projectId, Environment environment, DeploymentStatus status,
                                  Pageable pageable) {
@@ -98,16 +101,28 @@ public class DeploymentService {
             target == DeploymentStatus.SUCCESS ? LogLevel.INFO : LogLevel.ERROR,
             "Deployment finished with status " + target);
 
+        // Published after the final log entry so subscribers receive the
+        // closing message before the stream ends. Both are delivered after
+        // commit, in publication order.
+        eventPublisher.publishEvent(new DeploymentCompletedEvent(deployment.getId(), target));
+
         return deployment;
     }
 
     private void appendLog(Deployment deployment, LogLevel level, String message) {
-        logRepository.save(LogEntry.builder()
+        LogEntry saved = logRepository.save(LogEntry.builder()
             .deployment(deployment)
             .level(level)
             .message(message)
             .timestamp(Instant.now())
             .build());
+
+        // Published, not pushed. Sending straight to connected clients here
+        // would leak uncommitted state: if this transaction later rolls back,
+        // subscribers would have seen a log line that does not exist and
+        // vanishes on refresh. The listener defers delivery until commit.
+        eventPublisher.publishEvent(
+            new LogEntryCreatedEvent(deployment.getId(), LogResponse.from(saved)));
     }
 
     // Id-based variant for callers outside the original transaction -- notably

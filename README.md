@@ -2,7 +2,25 @@
 
 Application deployment and monitoring platform — track projects, deployments, and logs across environments.
 
-**Status:** Phase 5 (deployment tracking) complete. See [docs/requirements.md](docs/requirements.md) and [docs/openapi.yaml](docs/openapi.yaml) for the full plan.
+**Status:** Phase 6 (logs and monitoring) complete. See [docs/requirements.md](docs/requirements.md) and [docs/openapi.yaml](docs/openapi.yaml) for the full plan.
+
+## Monitoring
+
+`GET /api/dashboard/stats` returns deployment counts by status, success rate, recent activity windows, average duration, and the most recent deployments. Every figure is aggregated in SQL rather than by loading rows and counting in Java.
+
+### Live log streaming
+
+`GET /api/deployments/{id}/logs/stream` is a Server-Sent Events stream that pushes log lines as they are written:
+
+```bash
+curl -N http://localhost:8080/api/deployments/1/logs/stream -H "Authorization: Bearer $TOKEN"
+```
+
+It emits `log` events per line and a final `deployment-complete` event when the deployment settles, at which point the server closes the stream. SSE rather than WebSocket because delivery is one-directional — no reason to pay for full duplex, and browsers reconnect automatically via `EventSource`.
+
+Events are published only after the writing transaction commits, so a rolled-back transaction can never surface a log line that later vanishes.
+
+Known limitation: the subscriber registry is in-memory, so a stream only receives logs written by the instance it is connected to. Running multiple instances behind a load balancer would need a shared broker (Redis pub/sub or similar) to fan events out across them.
 
 ## Deployments
 

@@ -3,6 +3,7 @@ package com.deploytrack.repository;
 import com.deploytrack.entity.Deployment;
 import com.deploytrack.entity.DeploymentStatus;
 import com.deploytrack.entity.Environment;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import org.springframework.data.domain.Page;
@@ -55,4 +56,33 @@ public interface DeploymentRepository extends JpaRepository<Deployment, Long> {
         )
         """)
     List<Deployment> findLatestForProjects(@Param("projectIds") Collection<Long> projectIds);
+
+    // Counts every status in ONE query and returns only the aggregates.
+    //
+    // The obvious alternative -- findAll() then group in Java -- transfers
+    // every deployment row over the wire and into heap just to produce four
+    // numbers. It looks identical in behaviour and collapses at scale.
+    // Databases exist to do this; let it.
+    @Query("SELECT d.status, COUNT(d) FROM Deployment d GROUP BY d.status")
+    List<Object[]> countByStatus();
+
+    long countByStartedAtAfter(Instant since);
+
+    // Average seconds between start and completion, computed database-side.
+    // Only settled deployments have a completedAt, so IN_PROGRESS rows are
+    // excluded rather than counted as zero-duration.
+    @Query(value = """
+        SELECT AVG(EXTRACT(EPOCH FROM (completed_at - started_at)))
+        FROM deployments
+        WHERE completed_at IS NOT NULL
+        """, nativeQuery = true)
+    Double findAverageDurationSeconds();
+
+    @Query("""
+        SELECT d FROM Deployment d
+        JOIN FETCH d.deployedBy
+        JOIN FETCH d.project
+        ORDER BY d.startedAt DESC
+        """)
+    List<Deployment> findRecent(Pageable pageable);
 }
