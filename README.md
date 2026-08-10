@@ -91,6 +91,18 @@ Unit plus integration tests. Integration tests run against a real PostgreSQL con
 mvn verify
 ```
 
+## Database migrations
+
+The schema is owned by Flyway, not Hibernate. Migrations live in [backend/src/main/resources/db/migration](backend/src/main/resources/db/migration) and are applied automatically on startup, in order, exactly once.
+
+`ddl-auto` is set to `validate`, so Hibernate only checks that the entities match what the migrations produced and refuses to start if they have drifted. Adding a field to an entity without a matching migration fails at boot with a clear message rather than silently altering the database.
+
+To change the schema, add a new file — never edit one that has already run, since Flyway records a checksum of each applied migration and will refuse to start if one changes underneath it:
+
+```
+V2__add_project_repository_url.sql
+```
+
 ## Project layout
 
 ```

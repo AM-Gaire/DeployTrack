@@ -7,13 +7,22 @@ spring:
     username: ${DB_USER:deploytrack}
     password: ${DB_PASSWORD:deploytrack}
 
+  flyway:
+    enabled: true
+    # Lets Flyway adopt a database that already has tables but no schema
+    # history, by recording the current state as the baseline rather than
+    # failing. Needed once, for databases created back when Hibernate owned
+    # the schema; harmless on a fresh one.
+    baseline-on-migrate: true
+    baseline-version: 0
+
   jpa:
-    # ddl-auto: update is convenient for Phase 2 while the schema is still
-    # moving, but it's a known anti-pattern for anything beyond local dev --
-    # it can't express column renames or drops safely. Swapping to Flyway-
-    # managed migrations is on the backlog before Phase 4 wraps up.
     hibernate:
-      ddl-auto: update
+      # validate, never update: Flyway owns the schema now. Hibernate only
+      # checks that the entities match what the migrations produced, and
+      # refuses to start if they have drifted apart. That turns a mismatch
+      # into a loud failure at boot instead of a confusing runtime error.
+      ddl-auto: validate
     show-sql: true
     properties:
       hibernate:
