@@ -32,6 +32,16 @@ deploytrack:
     admin-username: ${ADMIN_USERNAME:admin}
     admin-password: ${ADMIN_PASSWORD:}
 
+  simulator:
+    # Stands in for a real CI/CD pipeline so deployments actually progress
+    # to a terminal state without external tooling. Set to false once a real
+    # pipeline reports outcomes via PATCH /api/deployments/{id}/status.
+    enabled: ${SIMULATOR_ENABLED:true}
+    step-delay: ${SIMULATOR_STEP_DELAY:1s}
+    # A dashboard where nothing ever fails demonstrates nothing, so a
+    # minority of simulated deployments fail.
+    failure-rate: ${SIMULATOR_FAILURE_RATE:0.2}
+
   jwt:
     # Local-development key only. It is committed so the project runs out of
     # the box, which is exactly why it must never be reused anywhere real --

@@ -3,8 +3,10 @@ package com.deploytrack.controller;
 import com.deploytrack.dto.CreateProjectRequest;
 import com.deploytrack.dto.PagedResponse;
 import com.deploytrack.dto.ProjectResponse;
+import com.deploytrack.entity.Project;
 import com.deploytrack.service.ProjectService;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -43,25 +45,36 @@ public class ProjectController {
         @RequestParam(defaultValue = "20") int size
     ) {
         var result = projectService.list(search, PageRequest.of(page, size));
-        return PagedResponse.from(result, ProjectResponse::from);
+        // One batched lookup for the whole page rather than one per project.
+        var latest = projectService.latestDeploymentsFor(result.getContent());
+        return PagedResponse.from(result, p -> ProjectResponse.from(p, latest.get(p.getId())));
     }
 
     @GetMapping("/{id}")
     public ProjectResponse get(@PathVariable Long id) {
-        return ProjectResponse.from(projectService.get(id));
+        return withLatestDeployment(projectService.get(id));
     }
 
     @PostMapping
     @PreAuthorize("hasAnyRole('DEVELOPER', 'ADMIN')")
     @ResponseStatus(HttpStatus.CREATED)
     public ProjectResponse create(@Valid @RequestBody CreateProjectRequest request) {
-        return ProjectResponse.from(projectService.create(request));
+        // A brand new project has no deployments, so its status is IDLE.
+        return ProjectResponse.from(projectService.create(request), null);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('DEVELOPER', 'ADMIN')")
     public ProjectResponse update(@PathVariable Long id, @Valid @RequestBody CreateProjectRequest request) {
-        return ProjectResponse.from(projectService.update(id, request));
+        return withLatestDeployment(projectService.update(id, request));
+    }
+
+    // An existing project may already have deployments, so its status must be
+    // resolved rather than assumed. Passing null here would report a live
+    // project as IDLE.
+    private ProjectResponse withLatestDeployment(Project project) {
+        var latest = projectService.latestDeploymentsFor(List.of(project));
+        return ProjectResponse.from(project, latest.get(project.getId()));
     }
 
     @DeleteMapping("/{id}")

@@ -2,7 +2,25 @@
 
 Application deployment and monitoring platform — track projects, deployments, and logs across environments.
 
-**Status:** Phase 3 (authentication) complete. See [docs/requirements.md](docs/requirements.md) and [docs/openapi.yaml](docs/openapi.yaml) for the full plan.
+**Status:** Phase 5 (deployment tracking) complete. See [docs/requirements.md](docs/requirements.md) and [docs/openapi.yaml](docs/openapi.yaml) for the full plan.
+
+## Deployments
+
+Triggering a deployment returns `202 Accepted`, not `201 Created` — the record exists, but the work it represents has not finished. Status transitions asynchronously to `SUCCESS` or `FAILED`, and clients poll `GET /api/deployments/{id}` for the outcome.
+
+`IN_PROGRESS` is the only non-terminal state. Once a deployment settles it cannot change, so a retried CI callback can never rewrite history. Two deployments to the same project and environment cannot run concurrently.
+
+A project's `status` is derived from its latest deployment (`IDLE`, `DEPLOYING`, `ACTIVE`, `FAILING`) rather than stored, so it can never drift out of sync with the deployment history.
+
+### Completing a deployment
+
+Real pipelines report outcomes through the callback endpoint:
+
+```bash
+curl -X PATCH http://localhost:8080/api/deployments/1/status -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"status":"SUCCESS"}'
+```
+
+Without one, a built-in simulator advances deployments through progress logs to a terminal state so the app demonstrates end to end. Disable it with `SIMULATOR_ENABLED=false`; tune it with `SIMULATOR_STEP_DELAY` and `SIMULATOR_FAILURE_RATE`.
 
 ## Authentication
 

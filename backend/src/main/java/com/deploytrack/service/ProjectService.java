@@ -1,13 +1,20 @@
 package com.deploytrack.service;
 
 import com.deploytrack.dto.CreateProjectRequest;
+import com.deploytrack.entity.Deployment;
 import com.deploytrack.entity.Project;
 import com.deploytrack.entity.Role;
 import com.deploytrack.entity.User;
 import com.deploytrack.exception.DuplicateResourceException;
 import com.deploytrack.exception.ResourceNotFoundException;
+import com.deploytrack.repository.DeploymentRepository;
 import com.deploytrack.repository.ProjectRepository;
 import com.deploytrack.security.CurrentUserService;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProjectService {
 
     private final ProjectRepository projectRepository;
+    private final DeploymentRepository deploymentRepository;
     private final CurrentUserService currentUserService;
 
     public Page<Project> list(String search, Pageable pageable) {
@@ -32,6 +40,27 @@ public class ProjectService {
     public Project get(Long id) {
         return projectRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Project " + id + " not found"));
+    }
+
+    // Resolves the newest deployment for a batch of projects in ONE query.
+    //
+    // The obvious implementation -- asking for each project's latest
+    // deployment inside the mapping loop -- is the N+1 problem: one query for
+    // the page of projects, then one more per project. It looks fine against
+    // three rows in development and falls over at scale, which is exactly why
+    // it is so common. Fetching the whole batch up front keeps a page of any
+    // size at two queries total.
+    //
+    // Projects with no deployments are simply absent from the map, and
+    // ProjectResponse maps that absence to IDLE.
+    @Transactional(readOnly = true)
+    public Map<Long, Deployment> latestDeploymentsFor(Collection<Project> projects) {
+        if (projects.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> ids = projects.stream().map(Project::getId).toList();
+        return deploymentRepository.findLatestForProjects(ids).stream()
+            .collect(Collectors.toMap(d -> d.getProject().getId(), Function.identity()));
     }
 
     @Transactional

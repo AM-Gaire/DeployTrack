@@ -10,9 +10,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authorization.AuthorizationDeniedException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 // Centralizes error -> HTTP response mapping so no controller method ever
 // needs its own try/catch, and no stack trace or raw exception message ever
@@ -33,10 +35,40 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.CONFLICT, ex.getMessage(), request);
     }
 
+    // 409 rather than 400: the request is well-formed and the caller is
+    // authorised, but it conflicts with the current state of the resource.
+    @ExceptionHandler(InvalidStateTransitionException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidStateTransition(
+        InvalidStateTransitionException ex, HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(InvalidCredentialsException.class)
     public ResponseEntity<ErrorResponse> handleInvalidCredentials(
         InvalidCredentialsException ex, HttpServletRequest request) {
         return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+    }
+
+    // Malformed request body: unparseable JSON, or a value that cannot map to
+    // its target type (typically an enum outside the allowed set). That is bad
+    // input from the client, so 400 -- previously this fell through to the
+    // catch-all and reported 500, blaming the server for the caller's typo.
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(
+        HttpMessageNotReadableException ex, HttpServletRequest request) {
+        // Deliberately not echoing ex.getMessage(): Jackson's text names
+        // internal Java types and enum constants, which leaks implementation
+        // detail into a public error response.
+        return build(HttpStatus.BAD_REQUEST,
+            "Request body is malformed or contains an unsupported value.", request);
+    }
+
+    // The query-parameter equivalent, e.g. ?status=nonsense.
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleParameterTypeMismatch(
+        MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST,
+            "Parameter '" + ex.getName() + "' has an unsupported value.", request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
