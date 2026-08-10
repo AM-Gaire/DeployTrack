@@ -23,6 +23,15 @@ server:
   port: 8080
 
 deploytrack:
+  bootstrap:
+    # Creates the first ADMIN on startup, only when no admin exists yet.
+    # Intentionally blank by default so nobody ever ships a build with a
+    # known default admin password -- an unconfigured app logs a warning
+    # instead of silently creating a well-known account.
+    admin-email: ${ADMIN_EMAIL:}
+    admin-username: ${ADMIN_USERNAME:admin}
+    admin-password: ${ADMIN_PASSWORD:}
+
   jwt:
     # Local-development key only. It is committed so the project runs out of
     # the box, which is exactly why it must never be reused anywhere real --

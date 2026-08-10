@@ -16,7 +16,17 @@ curl -X POST http://localhost:8080/api/auth/register -H "Content-Type: applicati
 curl -X POST http://localhost:8080/api/auth/login -H "Content-Type: application/json" -d '{"email":"you@example.com","password":"supersecret123"}'
 ```
 
-Self-registration always assigns the `DEVELOPER` role — a client cannot choose its own role. Promoting someone to `ADMIN` is a database operation until user management ships.
+Self-registration always assigns the `DEVELOPER` role — a client cannot choose its own role.
+
+### First admin
+
+Because nobody can self-register as an `ADMIN`, the first one is created on startup from environment variables, and only when no admin exists yet:
+
+```bash
+ADMIN_EMAIL=admin@deploytrack.dev ADMIN_PASSWORD=pick-a-strong-one mvn spring-boot:run
+```
+
+Leave these unset and the app logs a warning instead of creating an account with a predictable password. Once an admin exists this never runs again, so restarting cannot reset or overwrite it.
 
 Tokens expire after 15 minutes. Override with `JWT_EXPIRY=8h` while developing; refresh tokens are deferred past MVP. The signing key in `application.yml` is for local development only — production supplies `JWT_SECRET` from the environment.
 
