@@ -19,6 +19,11 @@
 
     <properties>
         <java.version>21</java.version>
+        <!-- Override the version Spring Boot manages. Docker Engine 29 dropped
+             support for older Docker API versions, and the bundled
+             Testcontainers ships a docker-java old enough that the daemon
+             rejects its handshake with HTTP 400. -->
+        <testcontainers.version>1.21.3</testcontainers.version>
     </properties>
 
     <dependencies>
@@ -82,10 +87,66 @@
             <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- Integration tests run against a real PostgreSQL container rather
+             than an in-memory substitute like H2. A different database means
+             different SQL dialect and constraint behaviour, so H2 tests can
+             pass while production breaks. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!-- docker-java still negotiates with a legacy Docker
+                             API version by default, which Docker Engine 29+
+                             rejects outright with HTTP 400 ("Could not find a
+                             valid Docker environment"). Pinning a supported
+                             version keeps Testcontainers working on both new
+                             and older daemons. -->
+                        <api.version>1.44</api.version>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+            <!-- Failsafe runs *IT classes, which Surefire deliberately ignores.
+                 The split is intentional: `mvn test` stays fast enough to run
+                 constantly (no Docker, ~2s), while `mvn verify` additionally
+                 runs the slower container-backed integration tests. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <api.version>1.44</api.version>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>

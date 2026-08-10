@@ -24,7 +24,11 @@ import org.springframework.web.bind.annotation.RestController;
 // requires authentication (see SecurityConfig's default-deny rule); the
 // @PreAuthorize annotations below add the per-role restrictions from the
 // permission matrix in docs/requirements.md. Reads are open to any logged-in
-// role, writes need DEVELOPER or ADMIN, and deletion is ADMIN-only.
+// role; writes need DEVELOPER or ADMIN.
+//
+// Role is only half the check. Whether the caller may touch *this particular*
+// project is an ownership question the annotations cannot express, so
+// ProjectService enforces that separately once the record is loaded.
 @RestController
 @RequestMapping("/api/projects")
 @RequiredArgsConstructor
@@ -61,7 +65,7 @@ public class ProjectController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('DEVELOPER', 'ADMIN')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         projectService.delete(id);

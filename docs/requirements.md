@@ -7,10 +7,18 @@ Three roles, enforced via Spring Security + JWT claims.
 | Action | VIEWER | DEVELOPER | ADMIN |
 |---|---|---|---|
 | View projects, deployments, logs | yes | yes | yes |
-| Create / edit a project | no | yes | yes |
+| Create a project | no | yes | yes |
+| Edit a project | no | own only | any |
+| Delete a project | no | own only | any |
 | Trigger a deployment | no | yes | yes |
-| Delete a project | no | no | yes |
 | Manage users and roles | no | no | yes |
+
+Two independent checks guard every write:
+
+1. **Role** — "what kind of user are you?", enforced by `@PreAuthorize` on the controller.
+2. **Ownership** — "is this record yours?", enforced in the service once the entity is loaded, since a role annotation cannot see which row is being touched.
+
+Both must pass. Skipping the second is how IDOR (insecure direct object reference) vulnerabilities happen: a correctly authenticated user with the right role simply changes the id in the URL to reach someone else's data. `ADMIN` bypasses the ownership check by design.
 
 A brand-new registration defaults to `DEVELOPER`. Only an `ADMIN` can promote/demote roles (Phase 4+, not MVP).
 

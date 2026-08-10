@@ -61,9 +61,16 @@ curl http://localhost:8080/api/projects
 
 ## Running tests
 
+Unit tests only — fast, no Docker needed:
+
 ```bash
-cd backend
 mvn test
+```
+
+Unit plus integration tests. Integration tests run against a real PostgreSQL container via Testcontainers rather than an in-memory substitute, so they need Docker running:
+
+```bash
+mvn verify
 ```
 
 ## Project layout

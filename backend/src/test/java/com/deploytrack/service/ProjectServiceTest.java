@@ -3,6 +3,8 @@ package com.deploytrack.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.deploytrack.dto.CreateProjectRequest;
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 
 // Pure unit tests: the repositories are mocked, so this verifies
 // ProjectService's own decision-making (duplicate check, not-found check)
@@ -65,6 +68,119 @@ class ProjectServiceTest {
         when(projectRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> projectService.get(99L))
+            .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    private static User user(Long id, Role role) {
+        return User.builder().id(id).username("u" + id).role(role).build();
+    }
+
+    private static Project projectOwnedBy(User owner) {
+        return Project.builder().id(1L).name("inventory-api").description("Stock").createdBy(owner).build();
+    }
+
+    @Test
+    void updateAllowsTheProjectOwner() {
+        User owner = user(1L, Role.DEVELOPER);
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(projectOwnedBy(owner)));
+        when(currentUserService.require()).thenReturn(owner);
+
+        Project updated = projectService.update(1L, new CreateProjectRequest("inventory-api", "New description"));
+
+        assertThat(updated.getDescription()).isEqualTo("New description");
+    }
+
+    @Test
+    void updateRejectsADifferentDeveloper() {
+        // The IDOR case: a legitimately authenticated DEVELOPER passes the
+        // role check, then supplies someone else's project id.
+        User owner = user(1L, Role.DEVELOPER);
+        User otherDeveloper = user(2L, Role.DEVELOPER);
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(projectOwnedBy(owner)));
+        when(currentUserService.require()).thenReturn(otherDeveloper);
+
+        assertThatThrownBy(() -> projectService.update(1L, new CreateProjectRequest("hijacked", "mine now")))
+            .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void updateAllowsAdminOnAnyProject() {
+        User owner = user(1L, Role.DEVELOPER);
+        User admin = user(99L, Role.ADMIN);
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(projectOwnedBy(owner)));
+        when(currentUserService.require()).thenReturn(admin);
+
+        Project updated = projectService.update(1L, new CreateProjectRequest("inventory-api", "Admin edited"));
+
+        assertThat(updated.getDescription()).isEqualTo("Admin edited");
+    }
+
+    @Test
+    void updateAllowsKeepingTheSameName() {
+        // Editing only the description must not trip the duplicate-name check
+        // against the project's own existing name.
+        User owner = user(1L, Role.DEVELOPER);
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(projectOwnedBy(owner)));
+        when(currentUserService.require()).thenReturn(owner);
+
+        Project updated = projectService.update(1L, new CreateProjectRequest("inventory-api", "Only desc changed"));
+
+        assertThat(updated.getName()).isEqualTo("inventory-api");
+    }
+
+    @Test
+    void updateRejectsRenameOntoAnExistingName() {
+        User owner = user(1L, Role.DEVELOPER);
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(projectOwnedBy(owner)));
+        when(currentUserService.require()).thenReturn(owner);
+        when(projectRepository.existsByNameIgnoreCase("billing-service")).thenReturn(true);
+
+        assertThatThrownBy(() -> projectService.update(1L, new CreateProjectRequest("billing-service", "x")))
+            .isInstanceOf(DuplicateResourceException.class);
+    }
+
+    @Test
+    void deleteRejectsADifferentDeveloper() {
+        User owner = user(1L, Role.DEVELOPER);
+        User otherDeveloper = user(2L, Role.DEVELOPER);
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(projectOwnedBy(owner)));
+        when(currentUserService.require()).thenReturn(otherDeveloper);
+
+        assertThatThrownBy(() -> projectService.delete(1L))
+            .isInstanceOf(AccessDeniedException.class);
+
+        verify(projectRepository, never()).delete(any(Project.class));
+    }
+
+    @Test
+    void deleteAllowsTheOwner() {
+        User owner = user(1L, Role.DEVELOPER);
+        Project project = projectOwnedBy(owner);
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
+        when(currentUserService.require()).thenReturn(owner);
+
+        projectService.delete(1L);
+
+        verify(projectRepository).delete(project);
+    }
+
+    @Test
+    void deleteAllowsAdminOnAnyProject() {
+        User owner = user(1L, Role.DEVELOPER);
+        Project project = projectOwnedBy(owner);
+        when(projectRepository.findById(1L)).thenReturn(Optional.of(project));
+        when(currentUserService.require()).thenReturn(user(99L, Role.ADMIN));
+
+        projectService.delete(1L);
+
+        verify(projectRepository).delete(project);
+    }
+
+    @Test
+    void deleteThrowsNotFoundForMissingProject() {
+        when(projectRepository.findById(404L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> projectService.delete(404L))
             .isInstanceOf(ResourceNotFoundException.class);
     }
 }
