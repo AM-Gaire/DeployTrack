@@ -58,11 +58,14 @@ deploytrack:
     failure-rate: ${SIMULATOR_FAILURE_RATE:0.2}
 
   jwt:
-    # Local-development key only. It is committed so the project runs out of
-    # the box, which is exactly why it must never be reused anywhere real --
-    # anyone with this value can forge a token for any user and any role.
-    # Production supplies its own via the JWT_SECRET environment variable
-    # (AWS Secrets Manager in Phase 10). Generate one with:
+    # Local-development key only, and it is public: this file is committed to
+    # a public repository, so anyone can read it and forge a token for any
+    # user and any role. That is acceptable only because it never leaves a
+    # developer machine.
+    #
+    # The prod profile (application-prod.yml) declares ${JWT_SECRET} with no
+    # fallback, so a production deployment that forgets to supply one refuses
+    # to start instead of running on this known key. Generate a real one with:
     #   openssl rand -base64 32
     secret: ${JWT_SECRET:Uaw6qGNZrDvfylhweCHyFZkQjspWnLuL9Rhs77rDiDE=}
     # Short by design. Because a JWT cannot be revoked once issued, expiry is

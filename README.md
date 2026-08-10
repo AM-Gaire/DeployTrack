@@ -64,7 +64,9 @@ ADMIN_EMAIL=admin@deploytrack.dev ADMIN_PASSWORD=pick-a-strong-one mvn spring-bo
 
 Leave these unset and the app logs a warning instead of creating an account with a predictable password. Once an admin exists this never runs again, so restarting cannot reset or overwrite it.
 
-Tokens expire after 15 minutes. Override with `JWT_EXPIRY=8h` while developing; refresh tokens are deferred past MVP. The signing key in `application.yml` is for local development only — production supplies `JWT_SECRET` from the environment.
+Tokens expire after 15 minutes. Override with `JWT_EXPIRY=8h` while developing; refresh tokens are deferred past MVP.
+
+The signing key in `application.yml` is a local development default and is public, since this repository is public — anyone can read it and forge a token. That is only safe because it never leaves a developer machine. Running with `SPRING_PROFILES_ACTIVE=prod` requires `JWT_SECRET`, `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD` to be supplied explicitly; the application refuses to start if any are missing rather than falling back to a known key.
 
 ## Stack
 

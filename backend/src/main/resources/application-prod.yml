@@ -1,0 +1,31 @@
+# Production overrides, active with SPRING_PROFILES_ACTIVE=prod.
+#
+# Every value here is deliberately left without a fallback. The base
+# application.yml ships development defaults so the project runs immediately
+# after cloning, but those defaults are public in a public repository -- the
+# JWT signing key in particular. Anyone could read it and forge a token for
+# any user and any role.
+#
+# An empty ${VAR} with no default makes Spring fail at startup rather than
+# silently running on a known-public key. A deployment that refuses to boot is
+# a far better outcome than one that boots and is trivially impersonated.
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    # Never log SQL in production: query text reaches log aggregation systems
+    # that are not held to the same access controls as the database.
+    show-sql: false
+
+deploytrack:
+  jwt:
+    secret: ${JWT_SECRET}
+    expiry: ${JWT_EXPIRY:15m}
+
+  simulator:
+    # A real pipeline reports outcomes through the status callback. Leaving the
+    # simulator on in production would invent deployment results.
+    enabled: false
