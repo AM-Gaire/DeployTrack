@@ -41,6 +41,15 @@ deploytrack:
     admin-username: ${ADMIN_USERNAME:admin}
     admin-password: ${ADMIN_PASSWORD:}
 
+  demo:
+    # Seeds a read-only VIEWER account with sample projects and deployment
+    # history, so a visitor can explore the deployed app without an account.
+    # Off unless explicitly enabled -- it must never invent projects in a real
+    # deployment.
+    enabled: ${DEMO_ENABLED:false}
+    email: ${DEMO_EMAIL:demo@deploytrack.dev}
+    password: ${DEMO_PASSWORD:}
+
   log-stream:
     # How long an idle SSE connection stays open before the server closes it.
     # Browsers reconnect automatically via EventSource, so a bounded timeout

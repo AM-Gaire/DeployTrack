@@ -20,13 +20,17 @@ export const tokenStore = {
 // Thrown for every non-2xx response so callers can branch on status rather
 // than parsing messages.
 export class ApiError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-    readonly fieldErrors: FieldError[] = [],
-  ) {
+  // Declared explicitly rather than as constructor parameter properties: the
+  // build runs with erasableSyntaxOnly, which only permits type syntax that
+  // can be stripped without changing runtime behaviour.
+  readonly status: number
+  readonly fieldErrors: FieldError[]
+
+  constructor(status: number, message: string, fieldErrors: FieldError[] = []) {
     super(message)
     this.name = 'ApiError'
+    this.status = status
+    this.fieldErrors = fieldErrors
   }
 
   // A 403 means the caller is authenticated but not permitted. Distinct from

@@ -34,9 +34,15 @@
 }
 
 /* Dark theme redefines only the token values; no component styles live in
-   here, so nothing can drift between the two themes. */
+   here, so nothing can drift between the two themes.
+ *
+ * Plain :root rather than a nested @theme. Tailwind resolves @theme at build
+ * time and hoists it out of the media query, so a nested one applies its
+ * values unconditionally -- the page renders dark even when the system asks
+ * for light. @theme above generates the utilities; this overrides the
+ * variables they read at runtime, which is what actually respects the query. */
 @media (prefers-color-scheme: dark) {
-  @theme {
+  :root {
     --color-paper: #0C0F13;
     --color-surface: #151A20;
     --color-surface-2: #1D242C;

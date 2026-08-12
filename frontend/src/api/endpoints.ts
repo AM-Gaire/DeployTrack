@@ -24,6 +24,10 @@ function query(params: Record<string, string | number | undefined>) {
   return qs ? `?${qs}` : ''
 }
 
+export const dashboard = {
+  stats: () => request<DashboardStats>('/api/dashboard/stats'),
+}
+
 export const auth = {
   login: (email: string, password: string) =>
     request<LoginResponse>('/api/auth/login', {
