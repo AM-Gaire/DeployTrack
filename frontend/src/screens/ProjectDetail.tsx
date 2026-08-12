@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { deployments, projects } from '../api/endpoints'
 import type { Deployment, DeploymentStatus, Environment, Paged, Project } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { DeployForm } from '../components/DeployForm'
+import { ConfirmDialog } from '../components/Modal'
+import { ProjectForm } from '../components/ProjectForm'
 import { DeploymentStatusPill, EnvBadge, ProjectStatusPill } from '../components/Status'
 import { EmptyState, ErrorState, NoMatchState, SkeletonRows } from '../components/states'
-import { Button, Panel } from '../components/ui'
+import { Banner, Button, Panel } from '../components/ui'
 import { absoluteTime, elapsedSince, timeAgo } from '../lib/format'
 import { useAsync } from '../lib/useAsync'
 
@@ -16,9 +19,15 @@ export function ProjectDetail() {
   const { projectId } = useParams()
   const id = Number(projectId)
   const { can, isOwner } = useAuth()
+  const navigate = useNavigate()
 
   const [environment, setEnvironment] = useState<Environment | ''>('')
   const [status, setStatus] = useState<DeploymentStatus | ''>('')
+  const [deploying, setDeploying] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const project = useAsync<Project>(() => projects.get(id), [id])
   const history = useAsync<Paged<Deployment>>(
@@ -65,11 +74,21 @@ export function ProjectDetail() {
             <ProjectStatusPill status={p.status} />
           </div>
           <div className="flex gap-2">
-            {can('DEVELOPER', 'ADMIN') && <Button variant="primary">Deploy</Button>}
-            {canModify && <Button>Edit</Button>}
-            {canModify && <Button variant="danger">Delete</Button>}
+            {can('DEVELOPER', 'ADMIN') && (
+              <Button variant="primary" onClick={() => setDeploying(true)}>
+                Deploy
+              </Button>
+            )}
+            {canModify && <Button onClick={() => setEditing(true)}>Edit</Button>}
+            {canModify && (
+              <Button variant="danger" onClick={() => setConfirmingDelete(true)}>
+                Delete
+              </Button>
+            )}
           </div>
         </div>
+
+        {actionError && <Banner tone="bad">{actionError}</Banner>}
         {p.description && <p className="max-w-[70ch] text-[13px] text-muted">{p.description}</p>}
         <p className="font-mono text-xs text-faint">
           Created by {p.createdBy.username} · <span title={absoluteTime(p.createdAt)}>{timeAgo(p.createdAt)}</span>
@@ -149,6 +168,55 @@ export function ProjectDetail() {
           </ul>
         )}
       </Panel>
+
+      {deploying && (
+        <DeployForm
+          projectId={id}
+          onClose={() => setDeploying(false)}
+          // Straight to the new deployment so the logs stream in front of the
+          // person who just triggered it -- that is the whole point of having
+          // started it.
+          onTriggered={(deployment) => navigate(`/deployments/${deployment.id}`)}
+        />
+      )}
+
+      {editing && (
+        <ProjectForm
+          project={p}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false)
+            project.reload()
+          }}
+        />
+      )}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Delete project"
+          body={`Deleting ${p.name} removes its deployment history and logs. This cannot be undone.`}
+          confirmLabel="Delete project"
+          busy={deleting}
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={async () => {
+            setDeleting(true)
+            setActionError(null)
+            try {
+              await projects.remove(id)
+              navigate('/projects', { replace: true })
+            } catch (err) {
+              setConfirmingDelete(false)
+              setActionError(
+                err instanceof ApiError && err.isForbidden
+                  ? 'You can only delete projects you created.'
+                  : 'Could not delete the project. Please try again.',
+              )
+            } finally {
+              setDeleting(false)
+            }
+          }}
+        />
+      )}
     </div>
   )
 }

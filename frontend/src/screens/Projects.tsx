@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { projects } from '../api/endpoints'
 import type { Paged, Project } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { ProjectForm } from '../components/ProjectForm'
 import { ProjectStatusPill } from '../components/Status'
 import { EmptyState, ErrorState, NoMatchState, SkeletonRows } from '../components/states'
 import { Button, Panel } from '../components/ui'
@@ -14,8 +15,10 @@ const PAGE_SIZE = 20
 
 export function Projects() {
   const { can } = useAuth()
+  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(0)
+  const [creating, setCreating] = useState(false)
 
   // Without debouncing, every keystroke fires a request. The race guard in
   // useAsync stops stale responses winning, but it does not stop the requests.
@@ -40,7 +43,11 @@ export function Projects() {
         <h1 className="text-xl font-semibold">Projects</h1>
         {/* Absent, not disabled, for a viewer. A greyed-out button invites a
             click and then explains nothing. */}
-        {canCreate && <Button variant="primary">New project</Button>}
+        {canCreate && (
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            New project
+          </Button>
+        )}
       </div>
 
       <div className="relative max-w-sm">
@@ -85,7 +92,13 @@ export function Projects() {
             <EmptyState
               title="Create your first project"
               body="Projects group deployments and logs by application."
-              action={canCreate ? <Button variant="primary">New project</Button> : undefined}
+              action={
+                canCreate ? (
+                  <Button variant="primary" onClick={() => setCreating(true)}>
+                    New project
+                  </Button>
+                ) : undefined
+              }
             />
           )
         ) : (
@@ -140,6 +153,15 @@ export function Projects() {
             </Button>
           </div>
         </div>
+      )}
+
+      {creating && (
+        <ProjectForm
+          onClose={() => setCreating(false)}
+          // Straight into the new project: the next thing anyone does after
+          // creating one is deploy to it.
+          onSaved={(project) => navigate(`/projects/${project.id}`)}
+        />
       )}
     </div>
   )
