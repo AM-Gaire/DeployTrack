@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+/* Design tokens from docs/design-brief.md and the published interface design.
+   Declared here rather than in a config file because Tailwind 4 is CSS-first:
+   every token below becomes a utility automatically (bg-surface, text-muted,
+   border-line), so components never hardcode a hex value. */
+@theme {
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-paper: #F7F8FA;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #EFF2F6;
+  --color-ink: #101418;
+  --color-muted: #5C6672;
+  --color-faint: #8A94A2;
+  --color-line: #DDE3EA;
+  --color-line-strong: #C3CCD7;
+
+  /* Accent is deliberately clear of the semantic hues below. If it were green,
+     a link and a successful deployment would read the same. */
+  --color-accent: #0B6E99;
+  --color-accent-soft: #E2F0F7;
+
+  --color-ok: #1B8A5A;
+  --color-ok-soft: #E1F3EA;
+  --color-warn: #B4761A;
+  --color-warn-soft: #FBF0DC;
+  --color-bad: #B3382B;
+  --color-bad-soft: #FAE7E4;
+  --color-idle-soft: #ECEFF3;
+
+  --radius-card: 10px;
+}
+
+/* Dark theme redefines only the token values; no component styles live in
+   here, so nothing can drift between the two themes. */
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-paper: #0C0F13;
+    --color-surface: #151A20;
+    --color-surface-2: #1D242C;
+    --color-ink: #E6EAEF;
+    --color-muted: #97A1AE;
+    --color-faint: #6D7885;
+    --color-line: #262E38;
+    --color-line-strong: #38424E;
+
+    --color-accent: #4FB3D9;
+    --color-accent-soft: #10303D;
+
+    --color-ok: #3FBF87;
+    --color-ok-soft: #10281E;
+    --color-warn: #E0A33E;
+    --color-warn-soft: #2A2010;
+    --color-bad: #F0736A;
+    --color-bad-soft: #2C1614;
+    --color-idle-soft: #1D242C;
+  }
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Keyboard focus must stay visible everywhere. The default outline is removed
+   by many resets, and losing it makes the app unusable without a mouse. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
