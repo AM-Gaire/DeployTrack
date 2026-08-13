@@ -1,24 +1,92 @@
+# The whole application in three containers.
+#
+#   docker compose up -d --build     everything
+#   docker compose up -d postgres    just the database, for local development
+#
+# The second form is what you want while developing: run the backend with
+# `mvn spring-boot:run` and the frontend with `npm run dev` for hot reload,
+# and let Docker provide only Postgres.
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: deploytrack-postgres
     environment:
-      POSTGRES_DB: deploytrack
-      POSTGRES_USER: deploytrack
-      POSTGRES_PASSWORD: deploytrack
+      POSTGRES_DB: ${DB_NAME:-deploytrack}
+      POSTGRES_USER: ${DB_USER:-deploytrack}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-deploytrack}
     ports:
-      # Host port 5433, not 5432 -- this machine already has a native
-      # PostgreSQL 18 install listening on 5432. Mapping to 5433 avoids
-      # touching that install; the container still uses its normal 5432
-      # internally, so nothing inside Docker needs to know about this.
+      # Host port 5433, not 5432, so this does not collide with a PostgreSQL
+      # installed natively on the host. Inside the Docker network the container
+      # still listens on 5432, which is what the backend connects to.
       - "5433:5432"
     volumes:
       - deploytrack-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U deploytrack"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-deploytrack}"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    container_name: deploytrack-backend
+    depends_on:
+      postgres:
+        # Waits for the healthcheck above, not merely for the container to
+        # exist. Postgres accepts connections seconds after starting, and
+        # without this gate Flyway races it and the backend dies on boot.
+        condition: service_healthy
+    environment:
+      # "postgres" is the service name, which Docker resolves on its internal
+      # network. Port 5432 is the container's own port -- the 5433 mapping
+      # above only exists for the host.
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-deploytrack}
+      DB_USER: ${DB_USER:-deploytrack}
+      DB_PASSWORD: ${DB_PASSWORD:-deploytrack}
+
+      # Development defaults so the stack runs immediately after cloning.
+      # Production supplies real values from a secrets manager and runs with
+      # SPRING_PROFILES_ACTIVE=prod, where these have no fallbacks and the
+      # application refuses to start without them.
+      JWT_SECRET: ${JWT_SECRET:-Uaw6qGNZrDvfylhweCHyFZkQjspWnLuL9Rhs77rDiDE=}
+      JWT_EXPIRY: ${JWT_EXPIRY:-15m}
+
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@deploytrack.dev}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-after-first-login}
+
+      # Seeds the read-only demo workspace the login screen offers.
+      DEMO_ENABLED: ${DEMO_ENABLED:-true}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-demo-readonly}
+
+      SIMULATOR_STEP_DELAY: ${SIMULATOR_STEP_DELAY:-3s}
+    healthcheck:
+      # wget rather than curl: the JRE alpine image ships busybox wget and not
+      # curl, and adding a package just to health check would be wasteful.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      # The JVM plus Flyway migrations take a while. Without a start period the
+      # container is marked unhealthy during normal startup and restarted in a
+      # loop before it ever finishes booting.
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: deploytrack-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      # The only port a user needs. Nginx serves the app and proxies /api to
+      # the backend, so the browser talks to one origin and no CORS
+      # configuration exists anywhere in the project.
+      - "3000:80"
 
 volumes:
   deploytrack-postgres-data:

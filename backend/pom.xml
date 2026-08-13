@@ -44,6 +44,14 @@
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
+        <!-- Provides /actuator/health, which container orchestration and load
+             balancers use to decide whether an instance is ready for traffic.
+             Only the health endpoint is exposed (see application.yml). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- JJWT is split into three artifacts: the api is compile-time,
              impl and jackson are runtime-only so application code can only
              ever depend on the stable public API. -->

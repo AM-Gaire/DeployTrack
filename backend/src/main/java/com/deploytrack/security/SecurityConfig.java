@@ -48,6 +48,11 @@ public class SecurityConfig {
                 // Registration and login must be reachable without a token --
                 // otherwise there would be no way to ever obtain one.
                 .requestMatchers("/api/auth/**").permitAll()
+                // Container orchestration and load balancers probe this before
+                // any user exists, so it cannot require a token. Only /health
+                // is exposed (see management.endpoints in application.yml) and
+                // it returns no details, so this leaks nothing.
+                .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 // Preflight requests carry no credentials by design.
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 // Default-deny: anything not explicitly permitted above needs

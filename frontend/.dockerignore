@@ -1,0 +1,11 @@
+# node_modules is reinstalled inside the image by npm ci. Copying the host's
+# copy would be slow, and would ship macOS-native binaries into a Linux image.
+node_modules
+dist
+.vite
+
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore

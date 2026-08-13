@@ -31,6 +31,23 @@ spring:
 server:
   port: 8080
 
+management:
+  endpoints:
+    web:
+      exposure:
+        # Health only. Actuator also ships endpoints that dump environment
+        # variables, configuration properties and heap contents -- exposing
+        # those would hand an attacker the database password and JWT secret.
+        include: health
+  endpoint:
+    health:
+      # Liveness alone would report healthy while the database is unreachable.
+      # Including readiness means the container is only considered ready when
+      # it can actually serve requests.
+      probes:
+        enabled: true
+      show-details: never
+
 deploytrack:
   bootstrap:
     # Creates the first ADMIN on startup, only when no admin exists yet.

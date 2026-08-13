@@ -1,0 +1,8 @@
+# target/ is rebuilt inside the image. Copying the host's build output would
+# ship stale classes and could mask a compilation failure.
+target
+
+.git
+.gitignore
+Dockerfile
+.dockerignore

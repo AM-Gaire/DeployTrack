@@ -2,7 +2,27 @@
 
 Application deployment and monitoring platform — track projects, deployments, and logs across environments.
 
-**Status:** Phase 6 (logs and monitoring) complete. See [docs/requirements.md](docs/requirements.md) and [docs/openapi.yaml](docs/openapi.yaml) for the full plan.
+**Status:** Phase 8 (Docker) complete. See [docs/requirements.md](docs/requirements.md) and [docs/openapi.yaml](docs/openapi.yaml) for the full plan.
+
+## Running the whole stack
+
+Requires Docker. Nothing else — no JDK, Node, or Maven.
+
+```bash
+docker compose up -d --build
+```
+
+Open http://localhost:3000 and use **Continue to the demo** for a read-only workspace with sample deployment history.
+
+Nginx serves the built frontend and proxies `/api` to the backend, so everything is same-origin and no CORS configuration exists anywhere in the project. The backend port is deliberately not published to the host — it is reachable only through Nginx on the Docker network.
+
+Startup is gated on health checks: the backend waits for Postgres to accept connections before Flyway runs, and the frontend waits for the backend to report healthy.
+
+To stop, and to discard the database volume as well:
+
+```bash
+docker compose down -v
+```
 
 ## Monitoring
 
@@ -70,31 +90,34 @@ The signing key in `application.yml` is a local development default and is publi
 
 ## Stack
 
-- **Backend:** Java 21, Spring Boot 3, Spring Data JPA, PostgreSQL
-- **Frontend:** React, TypeScript, Tailwind CSS (Phase 7)
-- **Infra:** Docker Compose, GitHub Actions, AWS (Phases 8-10)
+- **Backend:** Java 21, Spring Boot 3, Spring Data JPA, Flyway, PostgreSQL
+- **Frontend:** React 19, TypeScript, Tailwind CSS, Vite
+- **Infra:** Docker, Nginx, Docker Compose; GitHub Actions and AWS to follow
 
-## Running locally
+## Developing
 
-Requires JDK 21, Maven, and Docker Desktop.
+The containerised stack above is how the app runs in production. While developing, run only the database in Docker and the two halves natively, for hot reload:
+
+```bash
+docker compose up -d postgres
+```
+
+Requires JDK 21, Maven, and Node.
 
 This project targets Java 21. If `mvn -version` reports a different Java version, point `JAVA_HOME` at your JDK 21 install first — on Homebrew that's `export JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`.
 
+Postgres runs on host port `5433`, not the default `5432` — if you already have a local PostgreSQL install this avoids colliding with it. `application.yml` already points at `5433`.
+
+Then the API, on `http://localhost:8080`:
+
 ```bash
-docker compose up -d
+cd backend && mvn spring-boot:run
 ```
 
-Postgres runs on host port `5433`, not the default `5432` — if you already have a local PostgreSQL install (Postgres.app, `brew services`, etc.) this avoids colliding with it. `backend/src/main/resources/application.yml` is already pointed at `5433` by default.
+And the frontend, on `http://localhost:5173`, which proxies `/api` to the backend exactly as Nginx does in production:
 
 ```bash
-cd backend
-mvn spring-boot:run
-```
-
-The API starts on `http://localhost:8080`. Try it:
-
-```bash
-curl http://localhost:8080/api/projects
+cd frontend && npm install && npm run dev
 ```
 
 ## Running tests
