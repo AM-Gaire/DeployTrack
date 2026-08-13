@@ -1,0 +1,127 @@
+name: CI
+
+# Runs on every pull request, which is what makes it a gate rather than a
+# notification: a branch whose checks fail cannot be merged. Also runs on
+# pushes to main so the default branch is verified after a merge commit, which
+# combines two branches that each passed separately but were never built
+# together.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A second push to the same PR cancels the run still in flight. Without this,
+# a branch pushed three times in a minute queues three full runs and the first
+# two are already obsolete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# The workflow only reads the repository. Granting the minimum means a
+# compromised action in the dependency chain cannot push commits or publish
+# packages.
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          # Caches ~/.m2 keyed on pom.xml. Without it every run re-downloads
+          # most of Maven Central, which is the difference between a CI run
+          # people watch and one they learn to ignore.
+          cache: maven
+
+      # `mvn verify` runs the unit tests and then the Testcontainers-backed
+      # integration tests, which need a real Docker daemon. Ubuntu runners
+      # ship one, so this works with no extra setup -- and it means CI tests
+      # against actual PostgreSQL rather than an in-memory substitute that
+      # behaves differently.
+      - name: Run tests
+        working-directory: backend
+        run: mvn -B verify
+
+      # Uploaded even when the previous step failed, since a failing run is
+      # exactly when the reports are worth reading.
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: |
+            backend/target/surefire-reports/
+            backend/target/failsafe-reports/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci installs exactly what the lockfile pins and fails if the two
+      # have drifted. npm install would quietly resolve newer versions, so CI
+      # could pass against dependencies nobody has tested.
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # Type errors are the frontend's equivalent of a compile failure and
+      # must not reach main. Run separately from the build so a type error is
+      # reported as one, rather than buried in bundler output.
+      - name: Typecheck
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  docker:
+    name: Docker images
+    runs-on: ubuntu-latest
+    # Only worth building images once the code they contain is known good.
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Built but not pushed. Nothing consumes these yet -- publishing becomes
+      # meaningful in Phase 10, when a deployment target needs somewhere to
+      # pull from. What this proves today is that both Dockerfiles still build,
+      # which is exactly the kind of thing that silently rots otherwise.
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          # Caches layers in the Actions cache, so an unchanged dependency
+          # layer is not rebuilt on every run.
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
