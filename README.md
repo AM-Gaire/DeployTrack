@@ -2,7 +2,7 @@
 
 Application deployment and monitoring platform — track projects, deployments, and logs across environments.
 
-**Status:** Phase 8 (Docker) complete. See [docs/requirements.md](docs/requirements.md) and [docs/openapi.yaml](docs/openapi.yaml) for the full plan.
+**Status:** Phase 9 (CI/CD) complete. See [docs/requirements.md](docs/requirements.md) and [docs/openapi.yaml](docs/openapi.yaml) for the full plan.
 
 ## Running the whole stack
 
@@ -119,6 +119,12 @@ And the frontend, on `http://localhost:5173`, which proxies `/api` to the backen
 ```bash
 cd frontend && npm install && npm run dev
 ```
+
+## Continuous integration
+
+Every pull request runs [the CI workflow](.github/workflows/ci.yml): backend tests, a frontend typecheck and build, and both Docker image builds. `main` requires all three to pass before a pull request can be merged, so it stays deployable.
+
+Integration tests run against a real PostgreSQL container in CI, not an in-memory substitute — the runner provides the Docker daemon Testcontainers needs.
 
 ## Running tests
 
