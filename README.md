@@ -2,7 +2,7 @@
 
 Application deployment and monitoring platform — track projects, deployments, and logs across environments.
 
-**Status:** Phase 9 (CI/CD) complete. See [docs/requirements.md](docs/requirements.md) and [docs/openapi.yaml](docs/openapi.yaml) for the full plan.
+**Status:** Phase 10 (AWS deployment) complete. See [docs/requirements.md](docs/requirements.md) and [docs/openapi.yaml](docs/openapi.yaml) for the full plan.
 
 ## Running the whole stack
 
@@ -119,6 +119,14 @@ And the frontend, on `http://localhost:5173`, which proxies `/api` to the backen
 ```bash
 cd frontend && npm install && npm run dev
 ```
+
+## Deploying to AWS
+
+Infrastructure is defined in [terraform/](terraform/) and deployed by [the deploy workflow](.github/workflows/deploy.yml). [docs/deployment.md](docs/deployment.md) is the full runbook, including AWS account setup, billing alerts, and teardown.
+
+A single EC2 instance runs both containers against managed RDS PostgreSQL. The database sits in a private subnet with no internet route, reachable only from the application's security group. Neither the instance nor GitHub Actions stores AWS credentials — the instance uses an IAM role and CI authenticates through OIDC, so all credentials are temporary and rotate automatically.
+
+No NAT gateway or load balancer is created; at this scale both would cost more per month than everything else combined and neither is needed.
 
 ## Continuous integration
 
