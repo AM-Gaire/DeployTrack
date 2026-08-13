@@ -1,4 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <rect width="32" height="32" rx="7" fill="#0B6E99"/>
-  <rect x="11" y="11" width="10" height="10" rx="2.5" fill="#F7F8FA"/>
+  <!-- Thicker strokes and no window detail: the outline weight that reads
+       correctly in the header vanishes at a 16px browser tab. -->
+  <g fill="none" stroke="#F7F8FA" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" transform="translate(4 4) scale(1)">
+    <path d="M4 13a8 8 0 0 1 7 7a6 6 0 0 0 3-5a9 9 0 0 0 6-8a3 3 0 0 0-3-3a9 9 0 0 0-8 6a6 6 0 0 0-5 3"/>
+    <path d="M7 14a6 6 0 0 0-3 6a6 6 0 0 0 6-3"/>
+  </g>
 </svg>
