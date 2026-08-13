@@ -41,7 +41,27 @@ public class DeploymentService {
         return deploymentRepository.findFiltered(projectId, environment, status, pageable);
     }
 
+    // Loads a deployment on behalf of a signed-in user, enforcing the same
+    // visibility as its project. Without this a developer barred from seeing
+    // someone else's project could still read its deployments -- and its logs,
+    // which are reached through here too -- by using a deployment id directly.
+    //
+    // projectService.get throws 404 when the caller may not see it, so the
+    // rule lives in one place rather than being restated here.
     public Deployment get(Long id) {
+        Deployment deployment = load(id);
+        projectService.get(deployment.getProject().getId());
+        return deployment;
+    }
+
+    // Loads without a visibility check, for callers that are not acting on
+    // behalf of a user.
+    //
+    // Visibility is a property of a request someone made, not of reading a
+    // row. The simulator runs on a background thread with an empty security
+    // context, so asking who the caller is there throws -- which stranded
+    // every simulated deployment at IN_PROGRESS until this split existed.
+    private Deployment load(Long id) {
         return deploymentRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Deployment " + id + " not found"));
     }
@@ -82,9 +102,13 @@ public class DeploymentService {
     // The integration point a CI pipeline calls when a deployment finishes.
     // The simulator uses the same method, so there is exactly one code path
     // that can complete a deployment.
+    //
+    // Loads without a visibility check because the simulator has no user.
+    // The controller calls get() first, so a request arriving over HTTP is
+    // still checked -- background work simply is not a request.
     @Transactional
     public Deployment updateStatus(Long deploymentId, DeploymentStatus target) {
-        Deployment deployment = get(deploymentId);
+        Deployment deployment = load(deploymentId);
 
         if (!deployment.getStatus().canTransitionTo(target)) {
             // Covers both directions of illegality: reporting a non-terminal
@@ -131,6 +155,8 @@ public class DeploymentService {
     // persistence context has long since closed.
     @Transactional
     public void appendLogTo(Long deploymentId, LogLevel level, String message) {
-        appendLog(get(deploymentId), level, message);
+        // Only the simulator calls this, from a thread with no security
+        // context, so it loads without a visibility check.
+        appendLog(load(deploymentId), level, message);
     }
 }

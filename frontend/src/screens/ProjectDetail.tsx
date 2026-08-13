@@ -59,7 +59,12 @@ export function ProjectDetail() {
   const p = project.data
   // Role permits the action; ownership permits it on this record. Both are
   // checked, mirroring ProjectService.requireCanModify on the backend.
-  const canModify = can('DEVELOPER', 'ADMIN') && isOwner(p.createdBy.id)
+  // The backend omits createdBy for everyone but an admin. Absent therefore
+  // means the caller is scoped to their own projects, so anything they can
+  // see is theirs -- an admin always receives the field and takes the other
+  // branch. The role check still gates a viewer out entirely.
+  const canModify =
+    can('DEVELOPER', 'ADMIN') && (p.createdBy === null || isOwner(p.createdBy.id))
   const isFiltered = environment !== '' || status !== ''
 
   return (
@@ -91,7 +96,8 @@ export function ProjectDetail() {
         {actionError && <Banner tone="bad">{actionError}</Banner>}
         {p.description && <p className="max-w-[70ch] text-[13px] text-muted">{p.description}</p>}
         <p className="font-mono text-xs text-faint">
-          Created by {p.createdBy.username} · <span title={absoluteTime(p.createdAt)}>{timeAgo(p.createdAt)}</span>
+          {p.createdBy && `Created by ${p.createdBy.username} · `}
+          <span title={absoluteTime(p.createdAt)}>{timeAgo(p.createdAt)}</span>
         </p>
       </div>
 

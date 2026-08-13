@@ -30,16 +30,53 @@ public class ProjectService {
     private final DeploymentRepository deploymentRepository;
     private final CurrentUserService currentUserService;
 
+    // Which projects a caller may see at all.
+    //
+    // ADMIN and VIEWER see everything: an admin manages the system, and a
+    // viewer exists to observe it -- a read-only role that can only see its
+    // own work would have nothing to look at.
+    //
+    // A DEVELOPER sees only what they created. Returning null means "no owner
+    // filter", which the repository query treats as unscoped.
+    private Long visibilityScope() {
+        User caller = currentUserService.require();
+        return caller.getRole() == Role.DEVELOPER ? caller.getId() : null;
+    }
+
     public Page<Project> list(String search, Pageable pageable) {
-        if (search != null && !search.isBlank()) {
-            return projectRepository.findByNameContainingIgnoreCase(search, pageable);
-        }
-        return projectRepository.findAll(pageable);
+        // Empty rather than null: an empty term matches every name, and a null
+        // string parameter has no type Postgres can infer.
+        String term = (search == null || search.isBlank()) ? "" : search.trim();
+        return projectRepository.findVisible(visibilityScope(), term, pageable);
     }
 
     public Project get(Long id) {
-        return projectRepository.findById(id)
+        Project project = projectRepository.findById(id)
             .orElseThrow(() -> new ResourceNotFoundException("Project " + id + " not found"));
+
+        // Scoping the list alone would be presentation, not enforcement -- a
+        // developer could still open someone else's project by typing its id
+        // into the URL. This is the same class of hole as the IDOR fixed on
+        // the write path.
+        //
+        // 404 rather than 403 on purpose: a 403 would confirm the project
+        // exists, which is exactly what a caller who cannot see it should not
+        // learn. To them it is indistinguishable from an id that was never
+        // used.
+        Long scope = visibilityScope();
+        if (scope != null && !project.getCreatedBy().getId().equals(scope)) {
+            throw new ResourceNotFoundException("Project " + id + " not found");
+        }
+
+        return project;
+    }
+
+    // True when the caller is allowed to know who owns a project. Only an
+    // admin needs it: a developer sees nothing but their own work, so the
+    // name would be their own on every row, and a viewer has no reason to
+    // know who owns what.
+    public boolean canSeeOwners() {
+        return currentUserService.require().getRole() == Role.ADMIN;
     }
 
     // Resolves the newest deployment for a batch of projects in ONE query.

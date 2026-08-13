@@ -3,8 +3,11 @@ package com.deploytrack.service;
 import com.deploytrack.dto.DashboardStatsResponse;
 import com.deploytrack.dto.DeploymentResponse;
 import com.deploytrack.entity.DeploymentStatus;
+import com.deploytrack.entity.Role;
+import com.deploytrack.entity.User;
 import com.deploytrack.repository.DeploymentRepository;
 import com.deploytrack.repository.ProjectRepository;
+import com.deploytrack.security.CurrentUserService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumMap;
@@ -23,10 +26,19 @@ public class DashboardService {
 
     private final DeploymentRepository deploymentRepository;
     private final ProjectRepository projectRepository;
+    private final CurrentUserService currentUserService;
 
     @Transactional(readOnly = true)
     public DashboardStatsResponse stats() {
-        Map<DeploymentStatus, Long> byStatus = countsByStatus();
+        // Every figure below is scoped to what the caller can see, so a
+        // developer's success rate describes their own work rather than the
+        // whole system's. An unscoped dashboard beside a scoped project list
+        // would be worse than either: percentages that cannot be reconciled
+        // with anything on screen, and a rough signal of how much everyone
+        // else is deploying.
+        Long ownerId = visibilityScope();
+
+        Map<DeploymentStatus, Long> byStatus = countsByStatus(ownerId);
 
         long total = byStatus.values().stream().mapToLong(Long::longValue).sum();
         long succeeded = byStatus.getOrDefault(DeploymentStatus.SUCCESS, 0L);
@@ -36,25 +48,33 @@ public class DashboardService {
         Instant now = Instant.now();
 
         return new DashboardStatsResponse(
-            projectRepository.count(),
+            ownerId == null ? projectRepository.count() : projectRepository.countByCreatedById(ownerId),
             total,
             toResponseMap(byStatus),
             // Denominator is settled deployments, not all of them. Counting
             // IN_PROGRESS ones would drag the rate down every time a
             // deployment starts, making the number swing for no real reason.
             settled == 0 ? null : round(succeeded * 100.0 / settled),
-            deploymentRepository.countByStartedAtAfter(now.minus(Duration.ofHours(24))),
-            deploymentRepository.countByStartedAtAfter(now.minus(Duration.ofDays(7))),
-            round(deploymentRepository.findAverageDurationSeconds()),
-            deploymentRepository.findRecent(PageRequest.of(0, RECENT_DEPLOYMENT_LIMIT)).stream()
+            deploymentRepository.countSinceForOwner(now.minus(Duration.ofHours(24)), ownerId),
+            deploymentRepository.countSinceForOwner(now.minus(Duration.ofDays(7)), ownerId),
+            round(deploymentRepository.findAverageDurationSecondsForOwner(ownerId)),
+            deploymentRepository.findRecentForOwner(ownerId, PageRequest.of(0, RECENT_DEPLOYMENT_LIMIT))
+                .stream()
                 .map(DeploymentResponse::from)
                 .toList()
         );
     }
 
-    private Map<DeploymentStatus, Long> countsByStatus() {
+    // Mirrors ProjectService: DEVELOPER is scoped to their own work, ADMIN and
+    // VIEWER see everything.
+    private Long visibilityScope() {
+        User caller = currentUserService.require();
+        return caller.getRole() == Role.DEVELOPER ? caller.getId() : null;
+    }
+
+    private Map<DeploymentStatus, Long> countsByStatus(Long ownerId) {
         var counts = new EnumMap<DeploymentStatus, Long>(DeploymentStatus.class);
-        for (Object[] row : deploymentRepository.countByStatus()) {
+        for (Object[] row : deploymentRepository.countByStatusForOwner(ownerId)) {
             counts.put((DeploymentStatus) row[0], (Long) row[1]);
         }
         return counts;

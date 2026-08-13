@@ -33,7 +33,10 @@ export interface Project {
   name: string
   description: string | null
   status: ProjectStatus
-  createdBy: UserSummary
+  // Only sent to an admin. A developer sees nothing but their own projects,
+  // and a viewer has no reason to know who owns what, so the field is omitted
+  // rather than sent and hidden -- anything sent is visible in the network tab.
+  createdBy: UserSummary | null
   // Null when the project has never deployed -- the IDLE case.
   latestDeployment: Deployment | null
   createdAt: string

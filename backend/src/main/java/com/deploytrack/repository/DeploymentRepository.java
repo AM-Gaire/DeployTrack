@@ -63,26 +63,46 @@ public interface DeploymentRepository extends JpaRepository<Deployment, Long> {
     // every deployment row over the wire and into heap just to produce four
     // numbers. It looks identical in behaviour and collapses at scale.
     // Databases exist to do this; let it.
-    @Query("SELECT d.status, COUNT(d) FROM Deployment d GROUP BY d.status")
-    List<Object[]> countByStatus();
+    // The dashboard aggregates are scoped the same way the project list is:
+    // a null ownerId means unscoped, anything else restricts to deployments
+    // belonging to that user's projects. Without this a developer's success
+    // rate would be the whole system's, which is both misleading and leaks
+    // how much other people are deploying.
+    @Query("""
+        SELECT d.status, COUNT(d) FROM Deployment d
+        WHERE (:ownerId IS NULL OR d.project.createdBy.id = :ownerId)
+        GROUP BY d.status
+        """)
+    List<Object[]> countByStatusForOwner(@Param("ownerId") Long ownerId);
 
-    long countByStartedAtAfter(Instant since);
+    @Query("""
+        SELECT COUNT(d) FROM Deployment d
+        WHERE d.startedAt > :since
+          AND (:ownerId IS NULL OR d.project.createdBy.id = :ownerId)
+        """)
+    long countSinceForOwner(@Param("since") Instant since, @Param("ownerId") Long ownerId);
 
     // Average seconds between start and completion, computed database-side.
     // Only settled deployments have a completedAt, so IN_PROGRESS rows are
     // excluded rather than counted as zero-duration.
+    // Native because EXTRACT(EPOCH FROM interval) has no JPQL equivalent. The
+    // owner filter joins through to projects rather than using the JPQL path
+    // navigation available above.
     @Query(value = """
-        SELECT AVG(EXTRACT(EPOCH FROM (completed_at - started_at)))
-        FROM deployments
-        WHERE completed_at IS NOT NULL
+        SELECT AVG(EXTRACT(EPOCH FROM (d.completed_at - d.started_at)))
+        FROM deployments d
+        JOIN projects p ON p.id = d.project_id
+        WHERE d.completed_at IS NOT NULL
+          AND (:ownerId IS NULL OR p.created_by = :ownerId)
         """, nativeQuery = true)
-    Double findAverageDurationSeconds();
+    Double findAverageDurationSecondsForOwner(@Param("ownerId") Long ownerId);
 
     @Query("""
         SELECT d FROM Deployment d
         JOIN FETCH d.deployedBy
-        JOIN FETCH d.project
+        JOIN FETCH d.project p
+        WHERE (:ownerId IS NULL OR p.createdBy.id = :ownerId)
         ORDER BY d.startedAt DESC
         """)
-    List<Deployment> findRecent(Pageable pageable);
+    List<Deployment> findRecentForOwner(@Param("ownerId") Long ownerId, Pageable pageable);
 }
