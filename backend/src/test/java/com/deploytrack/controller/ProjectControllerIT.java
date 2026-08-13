@@ -1,6 +1,7 @@
 package com.deploytrack.controller;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 // Exercises the full request path: security filters, routing, validation,
@@ -23,6 +25,9 @@ import org.springframework.test.web.servlet.MockMvc;
 // a misleading error message, because the message came from a layer the unit
 // tests never touched.
 @AutoConfigureMockMvc
+// The simulator would complete deployments on a background thread mid-test,
+// changing rows while assertions run.
+@TestPropertySource(properties = "deploytrack.simulator.enabled=false")
 class ProjectControllerIT extends IntegrationTestBase {
 
     @Autowired
@@ -163,6 +168,35 @@ class ProjectControllerIT extends IntegrationTestBase {
             .andExpect(status().isOk());
     }
 
+    // The delete tests above and below use projects with no deployments, which
+    // is exactly why they kept passing while deleting a real project returned
+    // 500. Foreign keys from deployments and logs blocked the delete, and only
+    // a project that had actually been used had any.
+    @Test
+    void deletingAProjectAlsoRemovesItsDeploymentsAndLogs() throws Exception {
+        long projectId = createProject(aliceToken, "delete-with-history-" + System.nanoTime());
+        long deploymentId = triggerDeployment(aliceToken, projectId, "1.0.0", "staging");
+
+        // Triggering writes a log line, so all three tables have rows.
+        mockMvc.perform(get("/api/deployments/" + deploymentId + "/logs")
+                .header("Authorization", "Bearer " + aliceToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalElements").value(greaterThan(0)));
+
+        mockMvc.perform(delete("/api/projects/" + projectId)
+                .header("Authorization", "Bearer " + aliceToken))
+            .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/projects/" + projectId)
+                .header("Authorization", "Bearer " + aliceToken))
+            .andExpect(status().isNotFound());
+
+        // The children must be gone too, not merely orphaned.
+        mockMvc.perform(get("/api/deployments/" + deploymentId)
+                .header("Authorization", "Bearer " + aliceToken))
+            .andExpect(status().isNotFound());
+    }
+
     @Test
     void adminCanDeleteAnyProject() throws Exception {
         long id = createProject(aliceToken, "admin-override-delete");
@@ -179,6 +213,17 @@ class ProjectControllerIT extends IntegrationTestBase {
         mockMvc.perform(get("/api/projects/999999").header("Authorization", "Bearer " + aliceToken))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.status").value(404));
+    }
+
+    private long triggerDeployment(String token, long projectId, String version, String environment)
+        throws Exception {
+        String response = mockMvc.perform(post("/api/projects/" + projectId + "/deployments")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"version\":\"" + version + "\",\"environment\":\"" + environment + "\"}"))
+            .andExpect(status().isAccepted())
+            .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).get("id").asLong();
     }
 
     private long createProject(String token, String name) throws Exception {
