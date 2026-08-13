@@ -47,7 +47,8 @@ public class ProjectController {
         var result = projectService.list(search, PageRequest.of(page, size));
         // One batched lookup for the whole page rather than one per project.
         var latest = projectService.latestDeploymentsFor(result.getContent());
-        return PagedResponse.from(result, p -> ProjectResponse.from(p, latest.get(p.getId())));
+        boolean owners = projectService.canSeeOwners();
+        return PagedResponse.from(result, p -> ProjectResponse.from(p, latest.get(p.getId()), owners));
     }
 
     @GetMapping("/{id}")
@@ -60,7 +61,7 @@ public class ProjectController {
     @ResponseStatus(HttpStatus.CREATED)
     public ProjectResponse create(@Valid @RequestBody CreateProjectRequest request) {
         // A brand new project has no deployments, so its status is IDLE.
-        return ProjectResponse.from(projectService.create(request), null);
+        return ProjectResponse.from(projectService.create(request), null, projectService.canSeeOwners());
     }
 
     @PutMapping("/{id}")
@@ -74,7 +75,7 @@ public class ProjectController {
     // project as IDLE.
     private ProjectResponse withLatestDeployment(Project project) {
         var latest = projectService.latestDeploymentsFor(List.of(project));
-        return ProjectResponse.from(project, latest.get(project.getId()));
+        return ProjectResponse.from(project, latest.get(project.getId()), projectService.canSeeOwners());
     }
 
     @DeleteMapping("/{id}")

@@ -107,6 +107,15 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- Polls until an asynchronous result appears instead of sleeping a
+             fixed time. A sleep is either flaky when the machine is slow or
+             wastes the difference when it is fast. -->
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Integration tests run against a real PostgreSQL container rather
              than an in-memory substitute like H2. A different database means
              different SQL dialect and constraint behaviour, so H2 tests can

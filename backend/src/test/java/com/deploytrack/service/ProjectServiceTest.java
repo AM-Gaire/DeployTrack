@@ -91,16 +91,20 @@ class ProjectServiceTest {
     }
 
     @Test
-    void updateRejectsADifferentDeveloper() {
+    void updateHidesAnotherDevelopersProject() {
         // The IDOR case: a legitimately authenticated DEVELOPER passes the
         // role check, then supplies someone else's project id.
+        //
+        // Not-found rather than forbidden, because a developer cannot see
+        // other people's projects at all now. A 403 would confirm the project
+        // exists, which is exactly what someone probing ids should not learn.
         User owner = user(1L, Role.DEVELOPER);
         User otherDeveloper = user(2L, Role.DEVELOPER);
         when(projectRepository.findById(1L)).thenReturn(Optional.of(projectOwnedBy(owner)));
         when(currentUserService.require()).thenReturn(otherDeveloper);
 
         assertThatThrownBy(() -> projectService.update(1L, new CreateProjectRequest("hijacked", "mine now")))
-            .isInstanceOf(AccessDeniedException.class);
+            .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
@@ -140,15 +144,16 @@ class ProjectServiceTest {
     }
 
     @Test
-    void deleteRejectsADifferentDeveloper() {
+    void deleteHidesAnotherDevelopersProject() {
         User owner = user(1L, Role.DEVELOPER);
         User otherDeveloper = user(2L, Role.DEVELOPER);
         when(projectRepository.findById(1L)).thenReturn(Optional.of(projectOwnedBy(owner)));
         when(currentUserService.require()).thenReturn(otherDeveloper);
 
         assertThatThrownBy(() -> projectService.delete(1L))
-            .isInstanceOf(AccessDeniedException.class);
+            .isInstanceOf(ResourceNotFoundException.class);
 
+        // What matters most: nothing was deleted.
         verify(projectRepository, never()).delete(any(Project.class));
     }
 

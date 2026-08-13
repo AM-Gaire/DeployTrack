@@ -9,6 +9,9 @@ public record ProjectResponse(
     String name,
     String description,
     ProjectStatus status,
+    // Null for anyone but an admin. Omitted rather than sent-and-hidden: a
+    // field the client is not entitled to should not travel to the browser at
+    // all, since hiding it in the UI leaves it visible in the network tab.
     UserSummary createdBy,
     DeploymentResponse latestDeployment,
     Instant createdAt
@@ -26,13 +29,13 @@ public record ProjectResponse(
         IDLE
     }
 
-    public static ProjectResponse from(Project project, Deployment latest) {
+    public static ProjectResponse from(Project project, Deployment latest, boolean includeOwner) {
         return new ProjectResponse(
             project.getId(),
             project.getName(),
             project.getDescription(),
             deriveStatus(latest),
-            UserSummary.from(project.getCreatedBy()),
+            includeOwner ? UserSummary.from(project.getCreatedBy()) : null,
             latest == null ? null : DeploymentResponse.from(latest),
             project.getCreatedAt()
         );

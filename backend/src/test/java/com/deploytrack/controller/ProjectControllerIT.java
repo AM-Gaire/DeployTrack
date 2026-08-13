@@ -4,6 +4,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -73,12 +74,13 @@ class ProjectControllerIT extends IntegrationTestBase {
 
     @Test
     void createsProjectAttributedToTheAuthenticatedCaller() throws Exception {
-        mockMvc.perform(post("/api/projects")
-                .header("Authorization", "Bearer " + aliceToken)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"name":"attribution-test","description":"owned by alice"}"""))
-            .andExpect(status().isCreated())
+        String name = "attribution-test-" + System.nanoTime();
+        long id = createProject(aliceToken, name);
+
+        // Attribution is checked through an admin, since the response to a
+        // developer deliberately omits the owner. The record still carries it.
+        mockMvc.perform(get("/api/projects/" + id).header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
             .andExpect(jsonPath("$.createdBy.username").value("alice"));
     }
 
@@ -120,40 +122,136 @@ class ProjectControllerIT extends IntegrationTestBase {
 
     @Test
     void anotherDeveloperCannotUpdateSomeoneElsesProject() throws Exception {
-        long id = createProject(aliceToken, "alice-idor-update");
+        long id = createProject(aliceToken, "alice-idor-update-" + System.nanoTime());
 
-        // Bob is a valid DEVELOPER, so he clears the role check. Only the
-        // ownership check stops him -- this is the IDOR case.
+        // Bob is a valid DEVELOPER, so he clears the role check. Previously
+        // the ownership check stopped him with a 403; now visibility scoping
+        // stops him earlier and more completely, with a 404 that does not
+        // confirm the project exists at all.
         mockMvc.perform(put("/api/projects/" + id)
                 .header("Authorization", "Bearer " + bobToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"name":"bob-took-it","description":"mine now"}"""))
-            .andExpect(status().isForbidden())
-            // The message must name the real reason. Saying "your role does
-            // not permit this" would be false: Bob's role does permit editing.
-            .andExpect(jsonPath("$.message").value(containsString("projects you created")));
+            .andExpect(status().isNotFound());
     }
 
     @Test
     void anotherDeveloperCannotDeleteSomeoneElsesProject() throws Exception {
-        long id = createProject(aliceToken, "alice-idor-delete");
+        long id = createProject(aliceToken, "alice-idor-delete-" + System.nanoTime());
 
         mockMvc.perform(delete("/api/projects/" + id)
                 .header("Authorization", "Bearer " + bobToken))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isNotFound());
 
-        // The project must still be there afterwards.
+        // What matters most: the project is still there afterwards.
         mockMvc.perform(get("/api/projects/" + id).header("Authorization", "Bearer " + aliceToken))
             .andExpect(status().isOk());
     }
 
+    // Every other list test passes a search term, so none of them exercised
+    // the unfiltered query -- which is the one the application actually uses
+    // when you open the projects page. It failed with "function lower(bytea)
+    // does not exist", because a null string parameter has no type Postgres
+    // can infer.
     @Test
-    void anyAuthenticatedUserCanReadAnyProject() throws Exception {
-        long id = createProject(aliceToken, "alice-readable");
+    void listsProjectsWithNoSearchTerm() throws Exception {
+        createProject(aliceToken, "unfiltered-" + System.nanoTime());
 
+        mockMvc.perform(get("/api/projects").header("Authorization", "Bearer " + aliceToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content").isArray());
+
+        // Also unfiltered, and unscoped, since an admin sees everything.
+        mockMvc.perform(get("/api/projects").header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.content").isArray());
+    }
+
+    @Test
+    void aDeveloperOnlySeesTheirOwnProjectsInTheList() throws Exception {
+        String mine = "alice-scoped-" + System.nanoTime();
+        createProject(aliceToken, mine);
+        String theirs = "bob-scoped-" + System.nanoTime();
+        createProject(bobToken, theirs);
+
+        mockMvc.perform(get("/api/projects").param("search", "alice-scoped-")
+                .header("Authorization", "Bearer " + aliceToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalElements").value(1));
+
+        // Bob's project is invisible to Alice even by name.
+        mockMvc.perform(get("/api/projects").param("search", theirs)
+                .header("Authorization", "Bearer " + aliceToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalElements").value(0));
+    }
+
+    @Test
+    void aDeveloperCannotOpenAnotherDevelopersProjectById() throws Exception {
+        long id = createProject(aliceToken, "alice-hidden-" + System.nanoTime());
+
+        // Filtering the list alone would be presentation, not enforcement.
+        // 404 rather than 403 so the response does not confirm the project
+        // exists.
         mockMvc.perform(get("/api/projects/" + id).header("Authorization", "Bearer " + bobToken))
-            .andExpect(status().isOk());
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void aDeveloperCannotReachAnotherDevelopersDeploymentOrLogs() throws Exception {
+        long projectId = createProject(aliceToken, "alice-deployments-" + System.nanoTime());
+        long deploymentId = triggerDeployment(aliceToken, projectId, "1.0.0", "dev");
+
+        // A deployment inherits its project's visibility, so neither it nor
+        // its logs are reachable by id.
+        mockMvc.perform(get("/api/deployments/" + deploymentId)
+                .header("Authorization", "Bearer " + bobToken))
+            .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/deployments/" + deploymentId + "/logs")
+                .header("Authorization", "Bearer " + bobToken))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void aDeveloperCannotCompleteAnotherDevelopersDeployment() throws Exception {
+        long projectId = createProject(aliceToken, "alice-patch-" + System.nanoTime());
+        long deploymentId = triggerDeployment(aliceToken, projectId, "1.0.0", "dev");
+
+        // The status callback is a write, so it must be scoped too -- reading
+        // is not the only thing an unreachable id could be used for.
+        mockMvc.perform(patch("/api/deployments/" + deploymentId + "/status")
+                .header("Authorization", "Bearer " + bobToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"status":"SUCCESS"}"""))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void adminSeesEveryProjectAndWhoOwnsIt() throws Exception {
+        String name = "alice-owned-" + System.nanoTime();
+        createProject(aliceToken, name);
+
+        mockMvc.perform(get("/api/projects").param("search", name)
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.totalElements").value(1))
+            .andExpect(jsonPath("$.content[0].createdBy.username").value("alice"));
+    }
+
+    @Test
+    void aDeveloperIsNotToldWhoOwnsAProject() throws Exception {
+        String name = "alice-noowner-" + System.nanoTime();
+        long id = createProject(aliceToken, name);
+
+        // Every project a developer can see is their own, so the field would
+        // be their own name on every row. Omitted rather than hidden in the
+        // UI, since anything sent is readable in the network tab.
+        mockMvc.perform(get("/api/projects/" + id).header("Authorization", "Bearer " + aliceToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.createdBy").doesNotExist());
     }
 
     @Test

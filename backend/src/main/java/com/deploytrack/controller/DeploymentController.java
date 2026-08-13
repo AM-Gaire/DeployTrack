@@ -86,6 +86,11 @@ public class DeploymentController {
         @PathVariable Long deploymentId,
         @Valid @RequestBody UpdateDeploymentStatusRequest request
     ) {
+        // Visibility is checked here rather than inside updateStatus, which
+        // deliberately skips it so the simulator can run without a user. A
+        // request arriving over HTTP always has one, and a developer must not
+        // be able to complete a deployment on a project they cannot see.
+        deploymentService.get(deploymentId);
         return DeploymentResponse.from(deploymentService.updateStatus(deploymentId, request.status()));
     }
 }

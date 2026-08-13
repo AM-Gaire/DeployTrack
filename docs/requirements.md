@@ -6,12 +6,27 @@ Three roles, enforced via Spring Security + JWT claims.
 
 | Action | VIEWER | DEVELOPER | ADMIN |
 |---|---|---|---|
-| View projects, deployments, logs | yes | yes | yes |
+| View projects, deployments, logs | all | own only | all |
+| See who owns a project | no | n/a | yes |
 | Create a project | no | yes | yes |
 | Edit a project | no | own only | any |
 | Delete a project | no | own only | any |
 | Trigger a deployment | no | yes | yes |
 | Manage users and roles | no | no | yes |
+
+**Visibility** comes before either of them. A `DEVELOPER` sees only the
+projects they created — in the list, on the dashboard figures, and by direct
+id. `ADMIN` and `VIEWER` see everything; a read-only observer role that could
+only see its own work would have nothing to observe.
+
+Requesting a project outside your visibility returns **404, not 403**. A 403
+would confirm the project exists, which is precisely what someone probing ids
+should not learn.
+
+The owner's name is sent only to an `ADMIN`. A developer sees nothing but
+their own work, so it would be their own name on every row; a viewer has no
+reason to know. It is omitted from the response rather than hidden in the UI,
+since anything sent is readable in the network tab.
 
 Two independent checks guard every write:
 
@@ -35,7 +50,9 @@ A brand-new registration defaults to `DEVELOPER`. Only an `ADMIN` can promote/de
 - As a developer, I can create a project with a name and description; duplicate names are rejected with an inline error.
 - As a developer with no projects yet, I see an empty state that invites me to create one, not a blank grid.
 - As a developer, I can search and filter projects by status.
-- As an admin, I can delete a project (developers cannot).
+- As a developer, my project list, my dashboard figures, and any project I open by id are limited to projects I created.
+- As an admin, I see every project and who created each one, so I can tell them apart.
+- As a viewer, I see every project read-only, without being told who owns them.
 
 ### Deployments
 - As a developer, I can trigger a deployment for a project by specifying a version and target environment (`dev`, `staging`, `production`).

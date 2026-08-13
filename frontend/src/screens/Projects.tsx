@@ -113,6 +113,13 @@ export function Projects() {
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium">{project.name}</span>
                       <ProjectStatusPill status={project.status} />
+                      {/* Present only for an admin, who sees everyone's
+                          projects and needs to tell them apart. */}
+                      {project.createdBy && (
+                        <span className="font-mono text-[11px] text-faint">
+                          {project.createdBy.username}
+                        </span>
+                      )}
                     </span>
                     <span className="truncate font-mono text-xs text-muted">
                       {project.latestDeployment ? (
