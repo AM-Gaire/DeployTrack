@@ -23,3 +23,10 @@ frontend/build/
 
 # Vite
 frontend/.vite/
+
+# Terraform — state contains generated database and JWT passwords in plaintext
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars
+terraform/.terraform.lock.hcl

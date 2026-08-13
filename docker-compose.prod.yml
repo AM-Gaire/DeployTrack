@@ -1,0 +1,68 @@
+# Runs on the EC2 instance. Deliberately different from docker-compose.yml:
+#
+#   - No postgres service. The database is managed RDS, so backups, patching
+#     and storage are AWS's problem rather than a container that dies with the
+#     instance.
+#   - Images are pulled from ECR by tag, not built. The instance never compiles
+#     anything -- it runs artifacts CI already tested.
+#   - Nothing has a default. Every value comes from /opt/deploytrack/.env,
+#     which the bootstrap script writes from Parameter Store. A missing
+#     variable should stop the deployment, not silently fall back to a
+#     development password.
+
+services:
+  backend:
+    image: ${ECR_REGISTRY}/${PROJECT_NAME}-backend:${IMAGE_TAG:-latest}
+    container_name: deploytrack-backend
+    restart: unless-stopped
+    environment:
+      # The prod profile declares every placeholder without a fallback, so the
+      # application refuses to start rather than running on a key that is
+      # public in this repository.
+      SPRING_PROFILES_ACTIVE: prod
+
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+
+      DEMO_ENABLED: "true"
+      DEMO_PASSWORD: ${DEMO_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    logging:
+      # Without a cap, container logs grow until they fill the root volume and
+      # take the instance down. This is a genuinely common way small
+      # deployments die weeks after launch.
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    image: ${ECR_REGISTRY}/${PROJECT_NAME}-frontend:${IMAGE_TAG:-latest}
+    container_name: deploytrack-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      # Port 80 on the instance. The security group is what decides who can
+      # reach it, and the backend is never published -- it is reachable only
+      # through Nginx on the Docker network.
+      - "80:80"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
